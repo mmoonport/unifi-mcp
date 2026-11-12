@@ -3,7 +3,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, isPortSpec, isPrivateIpv4, type ServerOptions } from '../src/tools.js';
 import { Udm } from '../src/udm.js';
-import { fakeUdm, RULE_ID } from './fake-udm.js';
+import { fakeUdm, RULE_ID, UUID_RULE_ID } from './fake-udm.js';
 
 let cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const c of cleanup) await c(); cleanup = []; });
@@ -83,6 +83,21 @@ describe('unifi_set_port_forward', () => {
   it('works with the default audit', async () => {
     const { call } = await connect({ allowWrite: true });
     expect((await call('unifi_set_port_forward', { ...change, dst_port: '8443', fwd_port: '443', dry_run: false, confirm: true })).error).toBe(false);
+  });
+  it('accepts the UUID ids the gateway uses since 2026-11-12 (FS-308)', async () => {
+    const { call, fake } = await connect({ allowWrite: true });
+    const dry = JSON.parse((await call('unifi_set_port_forward', { id: UUID_RULE_ID, fwd: '192.168.50.223' })).text);
+    expect(dry).toMatchObject({ dryRun: true, rule: 'Furia Stream Port 1936', before: { fwd: '192.168.50.206' }, after: { fwd: '192.168.50.223' } });
+    const applied = JSON.parse((await call('unifi_set_port_forward', { id: UUID_RULE_ID, enabled: false, dry_run: false, confirm: true })).text);
+    expect(applied).toMatchObject({ applied: true, revert: { id: UUID_RULE_ID, enabled: true, dry_run: false, confirm: true } });
+    expect(fake.seen.filter((s) => s.method === 'PUT').map((s) => s.url)).toEqual([`/proxy/network/api/s/default/rest/portforward/${UUID_RULE_ID}`]);
+  });
+  it('rejects ids that are not a 24-hex id or a lowercase UUID, so nothing odd reaches the request path', async () => {
+    const { call, fake } = await connect({ allowWrite: true });
+    for (const id of ['../x', 'b4230af0-d6b2-49cd-accf-3d434a294f7', 'B4230AF0-D6B2-49CD-ACCF-3D434A294F73', `${UUID_RULE_ID}/x`, 'zzzzzzzzzzzzzzzzzzzzzzzz']) {
+      expect(await call('unifi_set_port_forward', { id, enabled: false })).toMatchObject({ error: true });
+    }
+    expect(fake.seen).toHaveLength(0);
   });
   it('refuses bad input before touching the gateway', async () => {
     const { call, fake } = await connect({ allowWrite: true });

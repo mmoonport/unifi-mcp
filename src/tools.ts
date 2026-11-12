@@ -50,6 +50,9 @@ export function isPortSpec(value: string): boolean {
 }
 
 const CHANGES = ['enabled', 'fwd', 'fwd_port', 'dst_port'] as const;
+// The id goes into the request path, so it stays strictly shaped: the 24-hex ids the gateway used until 2026-11-11, or the
+// lowercase UUIDs it returned on 2026-11-12 (FS-308).
+export const RULE_ID_PATTERN = /^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 export function createServer(udm: Udm, options: ServerOptions = {}): McpServer {
   const audit = options.audit ?? (() => undefined);
@@ -99,7 +102,7 @@ export function createServer(udm: Udm, options: ServerOptions = {}): McpServer {
       + 'and only after the owner has said to. Nothing here creates or deletes a rule. The reply carries the previous values so a revert is one more call. '
       + 'Uses the gateway\'s older ("legacy") rest/portforward endpoint, as the community clients do; unverified against a real write until the owner\'s first test.',
     inputSchema: {
-      id: z.string().regex(/^[0-9a-f]{24}$/, 'the rule\'s _id from unifi_list_port_forwards'),
+      id: z.string().regex(RULE_ID_PATTERN, 'the rule\'s _id from unifi_list_port_forwards (24 hex characters, or a UUID since the gateway\'s 2026-11-12 update)'),
       enabled: z.boolean().optional(),
       fwd: z.string().optional().describe('LAN address to forward to (private IPv4)'),
       fwd_port: z.string().optional().describe('port or range on the target'),
